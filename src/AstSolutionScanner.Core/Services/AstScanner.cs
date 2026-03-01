@@ -34,8 +34,8 @@ public class AstScanner : IAstScanner
                 var semanticModel = await document.GetSemanticModelAsync();
                 if (semanticModel == null) continue;
 
-                var nodes = syntaxRoot.DescendantNodes();
-
+                var nodes = syntaxRoot.DescendantNodes().ToList();
+                
                 foreach (var node in nodes)
                 {
                     ISymbol? symbol = node switch
@@ -60,10 +60,7 @@ public class AstScanner : IAstScanner
 
                     if (type == null) continue;
 
-                    // Filter by Symbol Type if specified
-                    if (options.SymbolTypes != null && !options.SymbolTypes.Contains(type.Value)) continue;
-
-                    // Apply common filters
+                    if (options.SymbolTypes != null && options.SymbolTypes.Any() && !options.SymbolTypes.Contains(type.Value)) continue;
                     if (options.PublicOnly && symbol.DeclaredAccessibility != Accessibility.Public) continue;
 
                     var namespaceName = symbol.ContainingNamespace?.ToDisplayString() ?? "";

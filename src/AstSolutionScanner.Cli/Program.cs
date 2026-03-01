@@ -3,32 +3,61 @@ using AstSolutionScanner.Core.Models;
 using AstSolutionScanner.Core.Services;
 using AstSolutionScanner.Cli.Renderers;
 
-var rootCommand = new RootCommand("dotnet-ast - A powerful tool to scan and analyze .NET solutions using Roslyn.");
-
-var scanCommand = new Command("scan", "Scans a solution or project and lists methods.");
-
-var solutionArg = new Argument<string>("path", "The path to the .sln or .csproj file.");
-var publicOnlyOpt = new Option<bool>("--public-only", "If true, only public members will be listed.");
-var projectFilterOpt = new Option<string?>("--project", "Filter by project name.");
-var namespaceFilterOpt = new Option<string?>("--namespace", "Filter by namespace.");
-var typeOpt = new Option<SymbolType[]?>("--type", "Filter by symbol type (Class, Method, Interface, Property).");
-var formatOpt = new Option<string>("--format", () => "text", "The output format (text|json).");
-var outputFileOpt = new Option<string?>("--output", "The file to save the output to.");
-
-scanCommand.AddArgument(solutionArg);
-scanCommand.AddOption(publicOnlyOpt);
-scanCommand.AddOption(projectFilterOpt);
-scanCommand.AddOption(namespaceFilterOpt);
-scanCommand.AddOption(typeOpt);
-scanCommand.AddOption(formatOpt);
-scanCommand.AddOption(outputFileOpt);
-
-scanCommand.SetHandler(async (string path, bool publicOnly, string? projectFilter, string? namespaceFilter, SymbolType[]? types, string format, string? output) =>
+var solutionArg = new Argument<string>("path")
 {
-    try 
+    Description = "The path to the .sln or .csproj file."
+};
+var publicOnlyOpt = new Option<bool>("--public-only")
+{
+    Description = "If true, only public members will be listed."
+};
+var projectFilterOpt = new Option<string?>("--project")
+{
+    Description = "Filter by project name."
+};
+var namespaceFilterOpt = new Option<string?>("--namespace")
+{
+    Description = "Filter by namespace."
+};
+var typeOpt = new Option<SymbolType[]?>("--type")
+{
+    Description = "Filter by symbol type (Class, Method, Interface, Property)."
+};
+var formatOpt = new Option<string>("--format")
+{
+    Description = "The output format (text|json).",
+    DefaultValueFactory = _ => "text"
+};
+var outputFileOpt = new Option<string?>("--output")
+{
+    Description = "The file to save the output to."
+};
+
+var scanCommand = new Command("scan", "Scans a solution or project and lists methods.")
+{
+    solutionArg,
+    publicOnlyOpt,
+    projectFilterOpt,
+    namespaceFilterOpt,
+    typeOpt,
+    formatOpt,
+    outputFileOpt
+};
+
+scanCommand.SetAction(async parseResult =>
+{
+    var path = parseResult.GetValue(solutionArg)!;
+    var publicOnly = parseResult.GetValue(publicOnlyOpt);
+    var projectFilter = parseResult.GetValue(projectFilterOpt);
+    var namespaceFilter = parseResult.GetValue(namespaceFilterOpt);
+    var types = parseResult.GetValue(typeOpt);
+    var format = parseResult.GetValue(formatOpt)!;
+    var output = parseResult.GetValue(outputFileOpt);
+
+    try
     {
         Console.WriteLine($"🔍 Scanning: {path}...");
-        
+
         var loader = new SolutionLoader();
         var solution = await loader.LoadSolutionAsync(path);
 
@@ -42,7 +71,7 @@ scanCommand.SetHandler(async (string path, bool publicOnly, string? projectFilte
         };
 
         var symbols = await scanner.GetSymbolsAsync(solution, options);
-        
+
         var renderer = new OutputRenderer();
         await renderer.RenderAsync(symbols, format, output);
     }
@@ -52,18 +81,30 @@ scanCommand.SetHandler(async (string path, bool publicOnly, string? projectFilte
         Console.WriteLine($"❌ Error: {ex.Message}");
         Console.ResetColor();
     }
-}, solutionArg, publicOnlyOpt, projectFilterOpt, namespaceFilterOpt, typeOpt, formatOpt, outputFileOpt);
+});
 
 var infoCommand = new Command("info", "Displays diagnostic information about the environment.");
-infoCommand.SetHandler(() => 
+infoCommand.SetAction(_ =>
 {
     Console.WriteLine(".NET AST Scanner v0.1");
     Console.WriteLine($"Runtime: {Environment.Version}");
     Console.WriteLine($"OS: {Environment.OSVersion}");
-    // MSBuild info could be added here if we want to be more detailed
+
+    try
+    {
+        var loader = new SolutionLoader();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"MSBuild Registration Error: {ex.Message}");
+    }
 });
 
-rootCommand.AddCommand(scanCommand);
-rootCommand.AddCommand(infoCommand);
+var rootCommand = new RootCommand("dotnet-ast - A powerful tool to scan and analyze .NET solutions using Roslyn.")
+{
+    scanCommand,
+    infoCommand
+};
 
-return await rootCommand.InvokeAsync(args);
+var parseResult = rootCommand.Parse(args);
+return await parseResult.InvokeAsync();

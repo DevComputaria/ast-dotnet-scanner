@@ -9,33 +9,62 @@ public interface ISolutionLoader
     Task<Solution> LoadSolutionAsync(string path);
 }
 
-public class SolutionLoader : ISolutionLoader
+public class SolutionLoader : ISolutionLoader, IDisposable
 {
+    private MSBuildWorkspace? _workspace;
+
     public SolutionLoader()
     {
         if (!MSBuildLocator.IsRegistered)
         {
-            MSBuildLocator.RegisterDefaults();
+            var instance = MSBuildLocator.RegisterDefaults();
+            Console.WriteLine($"   (Log) MSBuild Registered: {instance.Name} ({instance.Version}) from {instance.MSBuildPath}");
         }
     }
 
     public async Task<Solution> LoadSolutionAsync(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
-            throw new ArgumentException("Solution path cannot be null or empty.", nameof(path));
+            throw new ArgumentException("Path cannot be null or empty.", nameof(path));
 
         if (!File.Exists(path))
-            throw new FileNotFoundException("Solution file not found.", path);
+            throw new FileNotFoundException("File not found.", path);
 
-        using var workspace = MSBuildWorkspace.Create();
+        var extension = Path.GetExtension(path).ToLower();
         
-        // Connect to any diagnostic events if needed
-        workspace.WorkspaceFailed += (sender, e) => 
+        var properties = new Dictionary<string, string> 
         {
-            Console.WriteLine($"Workspace warning: {e.Diagnostic.Message}");
+            { "CheckForSystemRuntimeDependency", "true" }
         };
+        
+        // Keep the workspace alive as a member variable
+        _workspace = MSBuildWorkspace.Create(properties);
+        
+        _workspace.RegisterWorkspaceFailedHandler(e => 
+        {
+            var color = e.Diagnostic.Kind == WorkspaceDiagnosticKind.Failure ? ConsoleColor.Red : ConsoleColor.Yellow;
+            Console.ForegroundColor = color;
+            Console.WriteLine($"[{e.Diagnostic.Kind}] MSBuild: {e.Diagnostic.Message}");
+            Console.ResetColor();
+        });
 
-        var solution = await workspace.OpenSolutionAsync(path);
-        return solution;
+        if (extension == ".sln" || extension == ".slnx")
+        {
+            return await _workspace.OpenSolutionAsync(path);
+        }
+        else if (extension == ".csproj")
+        {
+            var project = await _workspace.OpenProjectAsync(path);
+            return project.Solution;
+        }
+        else
+        {
+            throw new NotSupportedException($"Extension {extension} is not supported.");
+        }
+    }
+
+    public void Dispose()
+    {
+        _workspace?.Dispose();
     }
 }

@@ -15,6 +15,7 @@ public class OutputRenderer
             { 
                 WriteIndented = true,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
                 Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
             });
         }

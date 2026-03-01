@@ -5,8 +5,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Build.Framework" Version="17.11.31" ExcludeAssets="runtime" PrivateAssets="all" />
-    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.3.3" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="System.CommandLine" Version="2.0.3" />
   </ItemGroup>
 
   <PropertyGroup>
