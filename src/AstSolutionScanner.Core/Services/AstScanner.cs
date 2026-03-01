@@ -12,6 +12,13 @@ public interface IAstScanner
 
 public class AstScanner : IAstScanner
 {
+    private static readonly SymbolDisplayFormat CanonicalFormat = new SymbolDisplayFormat(
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        memberOptions: SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeContainingType,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeParamsRefOut,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
+
     public async Task<IEnumerable<SymbolInfoModel>> GetSymbolsAsync(Solution solution, AstScanOptions options)
     {
         var symbols = new List<SymbolInfoModel>();
@@ -75,11 +82,40 @@ public class AstScanner : IAstScanner
 
                     string? returnType = null;
                     List<string>? parameters = null;
+                    List<ParameterInfoModel>? structuredParameters = null;
+                    List<string>? modifiers = GetModifiers(symbol);
+                    List<string>? attributes = symbol.GetAttributes().Select(a => a.AttributeClass?.Name ?? "").ToList();
+                    string? baseType = null;
+                    List<string>? interfaces = null;
+                    List<string>? calls = null;
+
+                    if (symbol is INamedTypeSymbol typeSymbol)
+                    {
+                        baseType = typeSymbol.BaseType?.ToDisplayString();
+                        interfaces = typeSymbol.AllInterfaces.Select(i => i.ToDisplayString()).ToList();
+                    }
 
                     if (symbol is IMethodSymbol methodSymbol)
                     {
                         returnType = methodSymbol.ReturnType.ToDisplayString();
                         parameters = methodSymbol.Parameters.Select(p => $"{p.Type.ToDisplayString()} {p.Name}").ToList();
+                        structuredParameters = methodSymbol.Parameters.Select(p => new ParameterInfoModel(
+                            p.Name,
+                            p.Type.ToDisplayString(),
+                            p.Type.IsReferenceType || p.NullableAnnotation == NullableAnnotation.Annotated,
+                            p.HasExplicitDefaultValue,
+                            p.HasExplicitDefaultValue ? p.ExplicitDefaultValue?.ToString() : null,
+                            p.RefKind.ToString().ToLower()
+                        )).ToList();
+
+                        // Call discovery (Simplified)
+                        calls = node.DescendantNodes()
+                            .OfType<InvocationExpressionSyntax>()
+                            .Select(inv => semanticModel.GetSymbolInfo(inv).Symbol)
+                            .Where(s => s != null)
+                            .Select(s => s!.ToDisplayString(CanonicalFormat))
+                            .Distinct()
+                            .ToList();
                     }
                     else if (symbol is IPropertySymbol propertySymbol)
                     {
@@ -97,12 +133,37 @@ public class AstScanner : IAstScanner
                         lineSpan.StartLinePosition.Line + 1,
                         lineSpan.StartLinePosition.Character + 1,
                         returnType,
-                        parameters
+                        
+                        // V2 Meta
+                        SymbolId: symbol.ToDisplayString(CanonicalFormat),
+                        FullyQualifiedName: symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        Modifiers: modifiers,
+                        Attributes: attributes,
+                        BaseType: baseType,
+                        Interfaces: interfaces,
+                        StructuredParameters: structuredParameters,
+                        Calls: calls,
+                        
+                        Parameters: parameters
                     ));
                 }
             }
         }
 
         return symbols;
+    }
+
+    private List<string> GetModifiers(ISymbol symbol)
+    {
+        var list = new List<string>();
+        if (symbol.IsStatic) list.Add("static");
+        if (symbol.IsAbstract) list.Add("abstract");
+        if (symbol.IsSealed) list.Add("sealed");
+        if (symbol.IsVirtual) list.Add("virtual");
+        if (symbol.IsOverride) list.Add("override");
+        
+        if (symbol is IMethodSymbol m && m.IsAsync) list.Add("async");
+        
+        return list;
     }
 }
