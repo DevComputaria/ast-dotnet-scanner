@@ -35,6 +35,7 @@ public record SymbolInfoModel(
     
     // V2 Meta
     string? SymbolId = null,
+    string? ParentSymbolId = null,
     string? FullyQualifiedName = null,
     List<string>? Modifiers = null,
     List<string>? Attributes = null,

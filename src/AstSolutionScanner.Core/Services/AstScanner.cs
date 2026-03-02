@@ -25,12 +25,22 @@ public class AstScanner : IAstScanner
 
         foreach (var project in solution.Projects)
         {
+            Console.WriteLine($"   (Diag) Project: {project.Name} | Documents: {project.Documents.Count()} | Language: {project.Language}");
+            
+            var compilation = await project.GetCompilationAsync();
+            if (compilation != null)
+            {
+                var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+                Console.WriteLine($"   (Diag) Compilation errors: {errors.Count}");
+            }
+            
             if (!string.IsNullOrEmpty(options.ProjectFilter) && 
                 !project.Name.Contains(options.ProjectFilter, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
+            int projectSymbolsFound = 0;
             foreach (var document in project.Documents)
             {
                 if (document.SourceCodeKind != SourceCodeKind.Regular) continue;
@@ -42,7 +52,15 @@ public class AstScanner : IAstScanner
                 if (semanticModel == null) continue;
 
                 var nodes = syntaxRoot.DescendantNodes().ToList();
+                int docSymbolsFound = 0;
                 
+                if (projectSymbolsFound == 0) {
+                    var relevantNodes = nodes.Where(n => n is MethodDeclarationSyntax or ClassDeclarationSyntax or InterfaceDeclarationSyntax or PropertyDeclarationSyntax).ToList();
+                    Console.WriteLine($"   (Diag) First doc: {document.Name} | Total nodes: {nodes.Count} | Relevant: {relevantNodes.Count}");
+                    if (syntaxRoot.ToString().Length > 0)
+                        Console.WriteLine($"   (Diag) First doc syntax tree length: {syntaxRoot.ToString().Length} chars");
+                }
+
                 foreach (var node in nodes)
                 {
                     ISymbol? symbol = node switch
@@ -136,6 +154,7 @@ public class AstScanner : IAstScanner
                         
                         // V2 Meta
                         SymbolId: symbol.ToDisplayString(CanonicalFormat),
+                        ParentSymbolId: symbol.ContainingType?.ToDisplayString(CanonicalFormat),
                         FullyQualifiedName: symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                         Modifiers: modifiers,
                         Attributes: attributes,
@@ -146,8 +165,11 @@ public class AstScanner : IAstScanner
                         
                         Parameters: parameters
                     ));
+                    projectSymbolsFound++;
+                    docSymbolsFound++;
                 }
             }
+            Console.WriteLine($"   (Diag) Project '{project.Name}' summary: docs={project.Documents.Count()}, totalNodes=???, relevantNodes=??? | Symbols found: {projectSymbolsFound}");
         }
 
         return symbols;
